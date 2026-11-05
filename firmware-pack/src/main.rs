@@ -36,13 +36,16 @@ const STACK_RAM_START: u32 = 0x20000000;
 const STACK_RAM_END: u32 = 0x20010000;
 // The unpacker's stack lies strictly inside its RAM (`firmware/unpacker.x`).
 const UNPACKER_RAM_END: u32 = 0x20020000;
-// LZMA2 preset level and Thumb-aligned literal/position context bits:
-// lp = 1 aligns literals to 16-bit Thumb halfwords, lc = 2 keeps lc + lp = 3
-// (12 KiB literal probability model), and pb = 2 aligns matches to 32-bit words.
+// LZMA2 preset and Thumb-aligned literal/position context bits: lp = 1 and
+// pb = 1 align literals and matches to 16-bit Thumb halfwords; lc = 2 keeps
+// lc + lp = 3 (12 KiB literal probability model).
 const LZMA_PRESET: u32 = 9;
 const LZMA_LC: u32 = 2;
 const LZMA_LP: u32 = 1;
-const LZMA_PB: u32 = 2;
+const LZMA_PB: u32 = 1;
+// Match length in bytes at which the encoder stops searching. Measured on the
+// release streams; this affects encoder effort, not the decoder's memory.
+const LZMA_NICE_LEN: u32 = 32;
 
 #[derive(Parser)]
 #[command(about = "Generate and audit firmware containers offline; never accesses USB")]
@@ -256,6 +259,7 @@ fn deflate(bytes: &[u8]) -> Result<Vec<u8>> {
     options.lzma_options.lc = LZMA_LC;
     options.lzma_options.lp = LZMA_LP;
     options.lzma_options.pb = LZMA_PB;
+    options.lzma_options.nice_len = LZMA_NICE_LEN;
     let mut compressed = Vec::new();
     let mut writer = lzma_rust2::Lzma2Writer::new(&mut compressed, options);
     writer

@@ -17,6 +17,13 @@ turn: polling every 1 ms took 79% of the CPU, 4 ms about 20%.
 Everything it shares with the other tasks is behind a critical-section mutex, a
 channel or an atomic.
 
+The experimental meter-temperature display uses an additional analog input,
+selected in ADC2 scans only while the System page is shown; other scans keep
+only the four line inputs and internal reference. Channel selection changes
+only while ADC2 is stopped. Its sensor and calibration are unverified, and a
+floating input may look valid. The estimate is informational only and is not
+used for safety or control.
+
 Controller configuration is checked against the supplied baseline and read back
 after writes. Interrupt registers are read-clear, never written. FIFO reads are
 consuming operations, not a recoverable stream: the receiver marks itself halted

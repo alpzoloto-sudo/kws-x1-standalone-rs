@@ -16,7 +16,6 @@ use std::sync::atomic::AtomicU32;
 use anyhow::{Context, Result};
 use embedded_graphics::pixelcolor::{Rgb565, Rgb888};
 use embedded_graphics::prelude::*;
-use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use firmware_core::buttons::{
     Detail, Level, Navigation, Page, QcOffer, RippleFocus, SettingsFocus, Tab,
 };
@@ -36,9 +35,6 @@ use firmware_core::spectrum::Spectrum;
 use image_webp::{ColorType, WebPEncoder};
 use qc_protocol::detect::{Outcome, Report};
 use qc_protocol::qc2::Voltage;
-use u8g2_fonts::FontRenderer;
-use u8g2_fonts::fonts;
-use u8g2_fonts::types::{FontColor, HorizontalAlignment, VerticalPosition};
 
 /// The firmware's page code. A directory path keeps `pd`'s own submodules
 /// where the firmware has them. Each page here uses only some of it.
@@ -219,16 +215,8 @@ const UW_MS_PER_MWH: u64 = 3_600_000_000;
 
 /// The firmware's package manifest, for its version.
 const FIRMWARE_MANIFEST: &str = include_str!("../../firmware/Cargo.toml");
-/// Where the settings page draws the version: compiled in here it would
-/// show this crate's, so it is drawn again. `ui`'s font, colour, right edge
-/// and baseline, and the area its digits cover.
-const VERSION_FONT: FontRenderer = FontRenderer::new::<fonts::u8g2_font_profont12_mr>();
-const VERSION_COLOR: Rgb565 = Rgb565::new(21, 43, 22);
-const VERSION_RIGHT: i32 = 228;
-const VERSION_BASELINE: i32 = 117;
 /// An example serial number word, not a real meter's.
 const EXAMPLE_SERIAL: u32 = 12_345;
-const VERSION_AREA: Rectangle = Rectangle::new(Point::new(150, 105), Size::new(82, 14));
 
 /// One frame, as the panel shows it.
 struct Canvas(Vec<Rgb565>);
@@ -1067,7 +1055,7 @@ fn cable_details(canvas: &mut Canvas) -> Result<()> {
     cable_page(canvas, "E-MARKER DETAILS")
 }
 
-/// System photo: no I2C faults, 1334 reads, scrolled down to the counters.
+/// System photo: no I2C faults, with an example temperature.
 fn system(canvas: &mut Canvas) -> Result<()> {
     let counters = Counters {
         step: 0,
@@ -1080,13 +1068,15 @@ fn system(canvas: &mut Canvas) -> Result<()> {
         errors: 0,
         reads: 1_334,
         reset_flags: 0,
+        serial: Some(EXAMPLE_SERIAL),
+        temperature: Some(25),
     };
     detail(
         canvas,
         Detail::System,
         false,
-        system_lines(counters, false),
-        2,
+        system_lines(counters, false, firmware_version()?),
+        0,
     );
     Ok(())
 }
@@ -1115,22 +1105,7 @@ fn settings(canvas: &mut Canvas) -> Result<()> {
         SettingsFocus::EnergyMemory,
         settings_store::Status::Saved,
         0,
-        Some(EXAMPLE_SERIAL),
     );
-    VERSION_AREA
-        .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK))
-        .draw(canvas)?;
-    VERSION_FONT
-        .render_aligned(
-            firmware_version()?,
-            Point::new(VERSION_RIGHT, VERSION_BASELINE),
-            VerticalPosition::Baseline,
-            HorizontalAlignment::Right,
-            FontColor::Transparent(VERSION_COLOR),
-            canvas,
-        )
-        .ok()
-        .context("drawing the version")?;
     Ok(())
 }
 
@@ -1217,6 +1192,43 @@ mod tests {
         pd_partner::Answer,
         pd_port::{Identity, Objects},
     };
+
+    // Moving the serial must preserve the stock format for erased, short and
+    // full-width serial words, without truncating identification data.
+    #[test]
+    fn system_info_preserves_serial_format() {
+        for (serial, expected) in [
+            (None, "SERIAL: -"),
+            (Some(0), "SERIAL: 100000"),
+            (Some(12_345), "SERIAL: 112345"),
+            (Some(u32::MAX), "SERIAL: 14294967295"),
+        ] {
+            let counters = Counters {
+                step: 0,
+                sr: 0,
+                cr1: 0,
+                cr4: 0,
+                stack_peak: 0,
+                stack_size: 0,
+                reg_failures: 0,
+                errors: 0,
+                reads: 0,
+                reset_flags: 0,
+                serial,
+                temperature: None,
+            };
+            let info = system_lines(counters, false, "0.11.0")[0];
+            assert_eq!(core::str::from_utf8(&info[1]).unwrap().trim_end(), expected);
+            assert_eq!(
+                core::str::from_utf8(&info[2]).unwrap().trim_end(),
+                "VERSION: 0.11.0"
+            );
+            assert_eq!(
+                core::str::from_utf8(&info[3]).unwrap().trim_end(),
+                "METER TEMP: ---C"
+            );
+        }
+    }
 
     fn port_text(observation: Observation) -> String {
         String::from_utf8(

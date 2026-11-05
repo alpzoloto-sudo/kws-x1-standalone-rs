@@ -3268,7 +3268,7 @@ fn arrows<D: DrawTarget<Color = Rgb565>>(target: &mut D, area: Rectangle, color:
 
 /// Settings rows: first baseline and pitch.
 const SETTINGS_BASELINE: i32 = 35;
-const SETTINGS_PITCH: i32 = 18;
+const SETTINGS_PITCH: i32 = 16;
 /// Settings row highlight and edit frame height.
 const SETTINGS_ROW_HEIGHT: u32 = 17;
 
@@ -3284,25 +3284,8 @@ fn value_frame<D: DrawTarget<Color = Rgb565>>(target: &mut D, left: i32, baselin
         YELLOW,
     );
 }
-/// Baseline of the firmware version line, below the rows and above the hint;
-/// the energy page's status line shares it.
-const VERSION_BASELINE: i32 = 117;
-/// This firmware's version, from its Cargo package.
-const VERSION: &str = env!("CARGO_PKG_VERSION");
-/// Baseline of the serial number line, one plain line above the version.
-const SERIAL_BASELINE: i32 = VERSION_BASELINE - 14;
-
-/// The serial number as the original firmware's About page prints it
-/// (stock image disassembly): "1", then the word with at least five digits.
-fn serial_label(serial: u32) -> Label {
-    let mut label = Label::new().push(b"1");
-    let mut place = 10_000;
-    while place > 1 && serial < place {
-        label = label.push(b"0");
-        place /= 10;
-    }
-    label.fixed(serial, 0)
-}
+/// Baseline of the status line, below the rows and above the hint.
+const STATUS_BASELINE: i32 = 117;
 
 /// The settings page: the cursor row is highlighted, and the value being
 /// changed is framed.
@@ -3315,17 +3298,9 @@ pub fn draw_settings<D: DrawTarget<Color = Rgb565>>(
     // The reset hold's progress over the calibration row, out of
     // [`RESET_STEPS`].
     reset_hold: u8,
-    // This meter's serial number, `None` if it was erased.
-    serial: Option<u32>,
 ) {
     draw_header(target, header);
-    // Four rows fit above the serial number; scroll when the last is selected.
-    let first = Item::ALL
-        .iter()
-        .position(|item| *item == focus.row())
-        .unwrap_or(0)
-        .saturating_sub(3);
-    for (index, item) in Item::ALL.into_iter().skip(first).take(4).enumerate() {
+    for (index, item) in Item::ALL.into_iter().enumerate() {
         let baseline = SETTINGS_BASELINE + index as i32 * SETTINGS_PITCH;
         let selected = item == focus.row();
         if selected && item == Item::Calibration {
@@ -3446,48 +3421,22 @@ pub fn draw_settings<D: DrawTarget<Color = Rgb565>>(
             }
         }
     }
-    text(
-        target,
-        &PLAIN,
-        "SERIAL",
-        Point::new(LEFT + 14, SERIAL_BASELINE),
-        HorizontalAlignment::Left,
-        MUTED,
-    );
-    let serial = match serial {
-        Some(serial) => serial_label(serial),
-        None => Label::new().push(b"-"),
-    };
-    text(
-        target,
-        &PLAIN,
-        serial.as_str(),
-        Point::new(RIGHT - 4, SERIAL_BASELINE),
-        HorizontalAlignment::Right,
-        MUTED,
-    );
     // A failed save stays visible instead of silently promising persistence.
-    let (label, color) = match save_status {
-        crate::settings_store::Status::Saved => ("VERSION", MUTED),
-        crate::settings_store::Status::NoSpace => ("SETTINGS AREA FULL", ORANGE),
-        crate::settings_store::Status::WriteFailed => ("SETTINGS WRITE FAILED", ORANGE),
+    let warning = match save_status {
+        crate::settings_store::Status::Saved => None,
+        crate::settings_store::Status::NoSpace => Some("SETTINGS AREA FULL"),
+        crate::settings_store::Status::WriteFailed => Some("SETTINGS WRITE FAILED"),
     };
-    text(
-        target,
-        &PLAIN,
-        label,
-        Point::new(LEFT + 14, VERSION_BASELINE),
-        HorizontalAlignment::Left,
-        color,
-    );
-    text(
-        target,
-        &PLAIN,
-        VERSION,
-        Point::new(RIGHT - 4, VERSION_BASELINE),
-        HorizontalAlignment::Right,
-        MUTED,
-    );
+    if let Some(warning) = warning {
+        text(
+            target,
+            &PLAIN,
+            warning,
+            Point::new(LEFT + 14, STATUS_BASELINE),
+            HorizontalAlignment::Left,
+            ORANGE,
+        );
+    }
     hint(
         target,
         header,
@@ -3611,7 +3560,7 @@ pub fn draw_calibration<D: DrawTarget<Color = Rgb565>>(
             target,
             &PLAIN,
             refusal.message(),
-            Point::new(LEFT, VERSION_BASELINE),
+            Point::new(LEFT, STATUS_BASELINE),
             HorizontalAlignment::Left,
             ORANGE,
         );

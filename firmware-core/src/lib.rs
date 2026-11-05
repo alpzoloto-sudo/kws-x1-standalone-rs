@@ -21,6 +21,7 @@ pub mod settings;
 pub mod single_wire;
 pub mod spectrum;
 pub mod stack;
+pub mod temperature;
 // Compatibility paths for the firmware; implementations live in the shared
 // crate, plus the FUSB302 FIFO and STATUS0 adapters for `pd_rx`/`pd_sniff`.
 pub use fusb302_pd::{pd_rx, pd_sniff};

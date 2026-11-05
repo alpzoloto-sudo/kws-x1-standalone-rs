@@ -276,8 +276,8 @@ point the way it flows (they follow the screen rotation).
 | **PD Session** | sink: session state, CC levels, the source's offer and the port check (a dual-role device's sink PDOs and identity). Passthrough: CC pin, Rp level and the latest PD messages | OK to scroll; hold OK: port check (drops to fixed 5 V first, PD 3.0 only) |
 | **Charger** | the offer (`*` = needs a 5 A cable), the charger's identity, maker and peak ratings, power status and source info, the battery of a power bank or a phone powering the meter, QC, SCP, FCP and AFC results | OK to scroll; hold OK: full scan (Quick Charge, SCP, FCP and AFC identification, PD, EPR, and the 5 A cable test with the plug in the charger) |
 | **Cable** | the cable's e-marker: a readable summary (type, speed, rating, length, alt modes, maker), identity, ratings, status and modes | OK to scroll; hold OK to read the e-marker (drops to fixed 5 V first) |
-| **System** | I2C bus state and counters, frame and button timing, stack use, `LAST RESET:` cause | OK to scroll |
-| **Settings** | `BRIGHTNESS` (5 levels, 60% at first), `ROTATION` (`AUTO` follows the tilt sensor, `NORMAL`, `FLIPPED`), `ENERGY MEMORY`, `TIMER`, `CALIBRATION`, `SERIAL` and `VERSION` (shown only) | Left/Right row, OK change it, Left/Right value, OK or Back done |
+| **System** | serial number, firmware version, estimated meter temperature, I2C bus state and counters, frame and button timing, stack use, `LAST RESET:` cause | OK to scroll |
+| **Settings** | `BRIGHTNESS` (5 levels, 60% at first), `ROTATION` (`AUTO` follows the tilt sensor, `NORMAL`, `FLIPPED`), `ENERGY MEMORY`, `TIMER` and `CALIBRATION` | Left/Right row, OK change it, Left/Right value, OK or Back done |
 
 The selector pages only show the offer until a sink session has one. A
 profile is requested only after the final OK; Left/Right alone just preview.
@@ -1185,8 +1185,22 @@ GET_STATUS`, `SECOND PLUG NO DATA`).
 
 <img src="pictures/system_screen.webp" width="480" alt="System screen">
 
-This is the **System** screen (tab `SYSTEM` in Info): the meter's own health.
-It scrolls (OK) through three sections.
+This is the **System** screen (tab `SYSTEM` in Info): meter information and
+health. Press OK to scroll through its sections.
+
+**`SYSTEM INFO`**
+
+- **`SERIAL`**: the meter's serial number, as the original firmware's About
+  page shows it, read from flash data that updates leave in place; `-` if erased.
+- **`VERSION`**: the firmware version.
+- **`METER TEMP`**: an experimental estimate of the meter's own temperature
+  from PA5, using the stock firmware's thermistor equation (beta 3380 K,
+  T0 25 C, ratio `(4095-x)/x`). Its ADC channel is sampled only while the
+  System page is shown. The sensor's presence and values are not
+  verified on this hardware, and a floating input can look plausible; it is
+  not calibrated, is not the cable, charger or ambient temperature, and must
+  not be used for safety decisions. `---` means no fresh valid scan; rail and
+  out-of-range counts are rejected.
 
 **Sensor bus**
 
@@ -1229,7 +1243,7 @@ It scrolls (OK) through three sections.
 <img src="pictures/settings_screen.webp" width="480" alt="Settings screen">
 
 This is the **Settings** screen (Back on the overview): display preferences,
-energy persistence, timer mode and calibration. The rows scroll as you select them.
+energy persistence, timer mode and calibration. All settings fit on one screen.
 
 - **`BRIGHTNESS`**: five bars, 20%, 40%, 60%, 80% and 95%. Saved; the backlight
   starts at the restored level, not always the default 60%.
@@ -1245,11 +1259,7 @@ energy persistence, timer mode and calibration. The rows scroll as you select th
 - **`CALIBRATION`**: `FACTORY` or `CUSTOM`. OK starts the calibration steps
   below; holding OK sweeps the row and, once full, restores the factory
   values. Saved.
-- **`SERIAL`**: the meter's serial number, as the original firmware's About
-  page shows it, read from the flash data that every update leaves in place;
-  `-` if that data was erased. Shown only; the cursor skips it.
-- **`VERSION`**: the firmware version, shown only; the cursor skips it. A failed
-  settings save replaces its label with a storage-full or write-failure warning.
+- A failed settings save shows a storage-full or write-failure warning.
 - **Hint row**: `< > choose  OK change  BACK exit`, then
   `< > dimmer/brighter  OK done`, `< > auto/normal/flipped  OK done` or
   `< > interval  OK done (shorter wears)`; on `CALIBRATION`,

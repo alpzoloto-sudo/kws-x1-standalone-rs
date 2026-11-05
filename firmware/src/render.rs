@@ -94,6 +94,11 @@ pub struct Counters {
     pub reads: u32,
     /// The reset cause flags (`RESET_FLAGS` bit order).
     pub reset_flags: u16,
+    /// The meter's serial word, or `None` if erased.
+    pub serial: Option<u32>,
+    /// The experimental PA5 thermistor estimate, or `None` when no fresh
+    /// valid scan is available.
+    pub temperature: Option<i16>,
 }
 
 /// Reset cause flag names, by bit (reference manual, reset control flag
@@ -118,14 +123,38 @@ const RESET_FLAGS: [&[u8]; 15] = [
     b"MULTI",
 ];
 
-/// System page, one value per row: the I2C bus section, then timing and
-/// memory. `STEP` is the bring-up step whose wait
+/// System page: meter information, the I2C bus, then timing and memory.
+/// `STEP` is the bring-up step whose wait
 /// hung (`0` = no timeout), which names the failure without needing a
 /// debugger: 1 bus free, 2 start accepted, 3 tx buffer empty, 4 byte
 /// transferred, 5 stop completed, 6 repeated start, 7 buffer before the read
 /// address, 8 receive mode entered, 9 first byte received, 10 second byte
 /// received.
-pub fn system_lines(counters: Counters, latched: bool) -> [Lines; 2] {
+pub fn system_lines(counters: Counters, latched: bool, version: &str) -> [Lines; 3] {
+    let mut info = [[b' '; 24]; 8];
+    put(&mut info[0], b"SYSTEM INFO");
+    put(&mut info[1], b"SERIAL: -");
+    if let Some(serial) = counters.serial {
+        // Stock About format: "1" followed by the word with at least five digits.
+        info[1][8] = b'1';
+        let mut digits = 5;
+        let mut remaining = serial;
+        while remaining >= 100_000 {
+            digits += 1;
+            remaining /= 10;
+        }
+        decimal(&mut info[1], 9, digits, serial);
+    }
+    put(&mut info[2], b"VERSION: ");
+    let version = version.as_bytes();
+    let length = version.len().min(info[2].len() - 9);
+    info[2][9..9 + length].copy_from_slice(&version[..length]);
+    put(&mut info[3], b"METER TEMP: ---C");
+    if let Some(celsius) = counters.temperature {
+        info[3][11] = if celsius < 0 { b'-' } else { b' ' };
+        decimal(&mut info[3], 12, 3, u32::from(celsius.unsigned_abs()));
+    }
+
     let mut rows = [[b' '; 24]; 8];
     // The latch also closes the bus without a failed transfer: after a PD
     // session left the PHY unverified, or when the bus never started.
@@ -168,7 +197,7 @@ pub fn system_lines(counters: Counters, latched: bool) -> [Lines; 2] {
     put(&mut timing[4], b"LAST RESET: 0000");
     hex(&mut timing[4], 12, 4, u32::from(counters.reset_flags));
     reset_names(&mut timing[5], counters.reset_flags);
-    [rows, timing]
+    [info, rows, timing]
 }
 
 /// The names of the set reset cause `flags`, space separated, as many as fit

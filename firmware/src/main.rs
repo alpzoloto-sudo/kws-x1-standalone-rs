@@ -328,6 +328,9 @@ static ORIENTATION: Watch<CriticalSectionRawMutex, Orientation, 1> = Watch::new(
 /// the lines page is shown; `meter_task` draws them.
 static LINE_VOLTAGES: Watch<CriticalSectionRawMutex, Option<line_adc::LineVoltages>, 1> =
     Watch::new();
+/// Experimental thermistor estimate. `line_task` is the only writer and
+/// publishes `None` outside the System page or when its scan fails.
+static TEMPERATURE: Watch<CriticalSectionRawMutex, Option<i16>, 1> = Watch::new();
 /// ADC2 reference count; cleared when scans are idle or fail, never replaced
 /// with a nominal supply voltage for the ripple estimate.
 static ADC_REFERENCE: Watch<CriticalSectionRawMutex, Option<u16>, 1> = Watch::new();
@@ -657,14 +660,18 @@ async fn held_high(tilt: &embassy_hc32::exti::ExtiInput) -> bool {
     false
 }
 
-/// Scan the line voltages and reference at the meter's read pace while the
-/// overview, lines, ripple or a Quick Charge tab is shown or the trigger runs, ADC2 idle
-/// otherwise, and step the Quick Charge trigger toward the request in force,
-/// whichever tab is shown. Without one it releases D+/D−.
+/// Scan the line voltages, reference and experimental thermistor estimate at
+/// the meter's read pace while the overview, lines, ripple, System or a Quick
+/// Charge tab is shown or the trigger runs, ADC2 idle otherwise, and step the
+/// Quick Charge trigger toward the request in force, whichever tab is shown.
+/// The thermistor channel is included only for a System-page scan; every
+/// other scan publishes `None` for temperature. Without a request it releases
+/// D+/D−.
 #[embassy_executor::task]
 async fn line_task(mut adc: line_adc::LineAdc, mut trigger: qc_drive::Trigger) {
     let lines_sender = LINE_VOLTAGES.sender();
     let reference_sender = ADC_REFERENCE.sender();
+    let temperature_sender = TEMPERATURE.sender();
     let status_sender = QC_STATUS.sender();
     let mut status = qc_drive::Status::Off;
     // After an edge storm, D− is not watched again before this.
@@ -679,20 +686,34 @@ async fn line_task(mut adc: line_adc::LineAdc, mut trigger: qc_drive::Trigger) {
         adc.listen(
             request.is_none() && status == qc_drive::Status::Off && Instant::now() >= listen_after,
         );
+        let show_temperature = input.is_some_and(|input| {
+            matches!(
+                input.page.view(),
+                View::Detail {
+                    page: Detail::System,
+                    ..
+                }
+            )
+        });
         // The trigger watches D− during its handshake. Ripple also needs a
         // current ADC2 reference, but it never takes ownership of that ADC.
         let scan = if request.is_some()
+            || show_temperature
             || input.is_some_and(|input| {
                 let view = input.page.view();
                 view.shows_lines() || view == View::Ripple
             }) {
-            adc.read().await
+            adc.read(show_temperature).await
         } else {
             None
         };
-        let lines = scan.map(|(lines, _)| lines);
+        let lines = scan.map(|(lines, _, _)| lines);
         lines_sender.send(lines);
-        reference_sender.send(scan.map(|(_, reference)| reference));
+        reference_sender.send(scan.map(|(_, reference, _)| reference));
+        temperature_sender.send(
+            scan.and_then(|(_, _, count)| count)
+                .and_then(firmware_core::temperature::estimate_c),
+        );
         // The trigger judges requests by the output, read here rather than
         // at the meter page's frame pace.
         let vbus_mv = match request.is_some() || trigger.single_wire_active() {
@@ -1061,6 +1082,8 @@ async fn meter_task(
     let mut last_raw_i: Option<u16> = None;
     let mut line_updates = LINE_VOLTAGES.anon_receiver();
     let mut lines = None;
+    let mut temperature_updates = TEMPERATURE.anon_receiver();
+    let mut temperature = None;
     let mut passive_lines = firmware_core::dcp::Passive::default();
     let mut driven = None;
     let mut ripple_updates = RIPPLE.anon_receiver();
@@ -1273,6 +1296,9 @@ async fn meter_task(
             lines = update;
             line_scanned = true;
             changed |= view.shows_lines();
+        }
+        if let Some(update) = temperature_updates.try_changed() {
+            temperature = update;
         }
         // Freeze the reference together with the capture, so supply updates
         // cannot change held statistics. Drain in-flight updates without using
@@ -1574,7 +1600,6 @@ async fn meter_task(
                         focus,
                         SETTINGS_SAVE.try_get().unwrap_or_default(),
                         input.reset_hold,
-                        flash::serial(),
                     );
                 }
                 View::Detail {
@@ -1706,10 +1731,16 @@ async fn meter_task(
                                 errors: I2C_ERRORS.load(Ordering::Relaxed),
                                 reads: ASYNC_READS.load(Ordering::Relaxed),
                                 reset_flags: reset_flags(),
+                                serial: flash::serial(),
+                                temperature,
                             };
-                            let sections = render::system_lines(counters, bus_failed())
-                                .into_iter()
-                                .chain([storage_diag::lines()]);
+                            let sections = render::system_lines(
+                                counters,
+                                bus_failed(),
+                                env!("CARGO_PKG_VERSION"),
+                            )
+                            .into_iter()
+                            .chain([storage_diag::lines()]);
                             #[cfg(feature = "flash-probe")]
                             let sections = sections.chain([flash_probe::lines()]);
                             ui::draw_detail(canvas, &header, detail, sections, top, scrolling)
@@ -1882,7 +1913,7 @@ async fn main(spawner: Spawner) {
         // Read-only slider sense (the original shows "Switch To Sink Mode" while
         // it reads high; observed low with the slider ON).
         pc13_input = InputPin::new_pull_up(Port::C, 13);
-        // PA6, PA7, PB0 and PB1 become analog inputs owned by ADC2.
+        // PA5, PA6, PA7, PB0 and PB1 become analog inputs owned by ADC2.
         let Ok(adc) =
             line_adc::LineAdc::new(hc32f460_pac::Adc2::steal(), DM_LINE, DM_PRIORITY).await
         else {

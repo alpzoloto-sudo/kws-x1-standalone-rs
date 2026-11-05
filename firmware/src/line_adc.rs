@@ -1,7 +1,9 @@
-//! D+, D−, CC1 and CC2 line voltages, measured by ADC2 against the internal
-//! reference (RM 16.3.2). ADC2 is independent of the INA226 bus monitor and
-//! the PD controller; nothing here drives the lines. Between scans, D−'s
-//! edges can also be watched for another device's FCP/SCP traffic.
+//! D+, D−, CC1 and CC2 line voltages and the stock firmware's PA5
+//! temperature input, measured by ADC2. The line voltages use the internal
+//! reference (RM 16.3.2); the temperature uses the raw ADC count and is
+//! included only when requested. ADC2 is independent of the INA226 bus
+//! monitor and the PD controller; nothing here drives the lines. Between
+//! scans, D−'s edges can also be watched for another device's FCP/SCP traffic.
 
 use embassy_hc32::adc::{
     Adc2, AdcPin, Average, FULL_SCALE, Input, InternalReference, SampleTime, Source,
@@ -27,18 +29,26 @@ const CC1_PIN: (Port, u8) = (Port::A, 6);
 const CC2_PIN: (Port, u8) = (Port::A, 7);
 const DM_PIN: (Port, u8) = (Port::B, 0);
 const DP_PIN: (Port, u8) = (Port::B, 1);
+/// The stock firmware's external thermistor divider. Its presence and
+/// electrical values are not verified on this hardware; see
+/// [`firmware_core::temperature`].
+const THERMISTOR_PIN: (Port, u8) = (Port::A, 5);
+/// Sequence-A selection bit for the fifth pin in `new`'s input list. The
+/// HAL maps pins to channels in order; the internal reference uses channel 8.
+const THERMISTOR_CHANNEL_MASK: u16 = 1 << 4;
 
-/// Sampling times in ADC clock cycles (RM 16.4.11), the source firmware's:
-/// long for the divided CC inputs, shorter for D+/D− and the reference.
+/// Sampling times in ADC clock cycles (RM 16.4.11), as the source firmware
+/// uses for CC, D+/D− and the reference. The temperature divider's source
+/// impedance is unknown, so it uses the longer CC sampling time.
 /// Checked when compiled: an out-of-range value fails the build.
 const CC_SAMPLE_TIME: SampleTime = SampleTime::new(255).expect("255 cycles is in range");
 const DATA_SAMPLE_TIME: SampleTime = SampleTime::new(40).expect("40 cycles is in range");
 const REFERENCE_SAMPLE_TIME: SampleTime = SampleTime::new(80).expect("80 cycles is in range");
 /// Each result is the mean of four conversions, as the source firmware sets.
 const AVERAGE: Average = Average::Four;
-/// One averaged scan is about 3000 ADC clocks (four times the sampling
-/// cycles above plus 12-bit conversions), 0.1 ms at a 30 MHz PCLK2, so this
-/// is a wide bound.
+/// The longest scan, including temperature, takes about 4012 ADC clocks
+/// (four times the sampling cycles above plus 13 clocks per conversion),
+/// under 0.14 ms at a 30 MHz PCLK2, so this is a wide bound.
 const SCAN_TIMEOUT: Duration = Duration::from_millis(3);
 /// While D− is watched, a scan first waits for a gap in its traffic,
 /// checking this often and at most this many times. Chosen: a few
@@ -58,10 +68,11 @@ pub const REFERENCE_MV: u16 = 1083;
 const CC_SCALE: u32 = 2;
 const DATA_SCALE: u32 = 1;
 
-/// Owns ADC2, its four analog line pins and the internal reference path.
+/// Owns ADC2, its four analog line pins, the thermistor input and the
+/// internal reference path.
 pub struct LineAdc {
-    /// CC1, CC2, D−, D+, then the internal reference.
-    adc: Adc2<5>,
+    /// CC1, CC2, D−, D+, the thermistor, then the internal reference.
+    adc: Adc2<6>,
     /// The NVIC line and priority D−'s edge interrupt uses.
     edge_line: Line,
     edge_priority: u8,
@@ -70,8 +81,9 @@ pub struct LineAdc {
 }
 
 impl LineAdc {
-    /// Make the line pins analog inputs, route the internal reference to
-    /// ADC2 and set up one averaged scan of the lines and the reference.
+    /// Make the line pins and the thermistor input analog inputs, route the
+    /// internal reference to ADC2 and set up one averaged scan of them and
+    /// the reference.
     ///
     /// # Errors
     /// Returns the HAL error if the inherited ADC conversion cannot be stopped
@@ -79,7 +91,7 @@ impl LineAdc {
     ///
     /// # Safety
     /// Call once during startup; route ADC2's end-of-scan event before the
-    /// first [`Self::read`]. The caller gives up ADC2, these four pins, PWC
+    /// first [`Self::read`]. The caller gives up ADC2, these five pins, PWC
     /// FCG3's ADC2/CMP gates, PWCMR.ADBUFE and CMP RVADC to this owner; no
     /// other code may configure them. It also gives up external-interrupt
     /// channel [`dm_sniff::EIRQ`] and `edge_line`, whose handler must call
@@ -106,6 +118,7 @@ impl LineAdc {
                 pin(CC2_PIN, CC_SAMPLE_TIME),
                 pin(DM_PIN, DATA_SAMPLE_TIME),
                 pin(DP_PIN, DATA_SAMPLE_TIME),
+                pin(THERMISTOR_PIN, CC_SAMPLE_TIME),
                 reference,
             ];
             Ok(Self {
@@ -182,9 +195,31 @@ impl LineAdc {
         }
     }
 
-    /// Run one scan, returning line voltages and the reference count for
-    /// ripple normalization. `None` on timeout or an unusable reference.
-    pub async fn read(&mut self) -> Option<(LineVoltages, u16)> {
+    /// Run one scan, returning line voltages, the reference count for ripple
+    /// normalization and an optional raw thermistor count. The thermistor is
+    /// converted only when `temperature` is true; otherwise its channel is
+    /// excluded from the scan and its stale data register is ignored.
+    /// `None` if the ADC is still running, times out or has an unusable reference.
+    pub async fn read(&mut self, temperature: bool) -> Option<(LineVoltages, u16, Option<u16>)> {
+        // SAFETY: this wrapper exclusively owns ADC2. No HAL read is in
+        // flight under `&mut self`; its interrupt only accesses ICR. The
+        // stopped check also covers a failed stop after a previous timeout.
+        // Change only channel selection, preserving the HAL's channel mapping,
+        // sampling times and averaging; the HAL still owns scan execution.
+        let adc = unsafe { hc32f460_pac::Adc2::steal() };
+        if adc.str().read().strt().bit_is_set() {
+            return None;
+        }
+        adc.chselra().modify(|r, w| {
+            let mask = r.chsela().bits() & !THERMISTOR_CHANNEL_MASK;
+            let mask = if temperature {
+                mask | THERMISTOR_CHANNEL_MASK
+            } else {
+                mask
+            };
+            // SAFETY: only the configured thermistor channel's bit changes.
+            unsafe { w.chsela().bits(mask) }
+        });
         let listening = self.edges.is_some();
         if listening {
             // Pausing mid-transaction would lose it: wait for a gap.
@@ -198,7 +233,7 @@ impl LineAdc {
         self.listen(false);
         let scan = self.adc.read().await;
         self.listen(listening);
-        let [cc1, cc2, dm, dp, reference] = scan.ok()?;
+        let [cc1, cc2, dm, dp, thermistor, reference] = scan.ok()?;
         let line = |count: u16, scale| millivolts(count, scale, reference);
         Some((
             LineVoltages {
@@ -208,6 +243,7 @@ impl LineAdc {
                 cc2_mv: line(cc2, CC_SCALE)?,
             },
             reference,
+            temperature.then_some(thermistor),
         ))
     }
 }
