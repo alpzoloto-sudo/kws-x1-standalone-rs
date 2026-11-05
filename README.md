@@ -50,6 +50,7 @@ community-tested compatibility, not a guarantee for every hardware revision.
   - [Firmware builds and release downloads](#firmware-builds-and-release-downloads)
   - [Flashing](#flashing)
   - [Going back to stock](#going-back-to-stock)
+- [Community reviews](#community-reviews)
 - [License](#license)
 
 ## Download or build
@@ -158,7 +159,8 @@ What this firmware does **not** do, for now:
   lost on restart; only energy totals can persist (see
   [What is saved](#what-is-saved)). There is no USB data connection to a
   computer or app.
-- **No calibration setting.** The measurement uses a fixed sensor calibration.
+- **Line voltages and ripple are not user-calibrated.** Settings calibration
+  corrects bus voltage and current, not these separate ADC inputs.
   The line voltages use an internal reference of 1083 mV, the stock
   firmware's value, rather than the reference manual's "about 1.1 V"
   (1100 mV, RM 16.3.2). A multimeter check on one unit matched it (D+ and D−
@@ -233,9 +235,9 @@ meter in again.
 - **Passthrough** (`PC13:1 PASSTHROUGH`). The meter turns its own CC
   pull-downs off and sits between a charger and a device, which negotiate with
   each other as through a plain cable. The meter measures and logs their PD
-  messages; it never sends, never acknowledges and never resets. Only the
-  overview, lines, energy, graph, PD session, system and settings pages are
-  shown.
+  messages; it never sends, never acknowledges and never resets. Available
+  tabs are Overview, Lines, Energy, Graph and Ripple in Monitor, and PD Sniff
+  and System in Info. Settings remain available; the Trigger group is hidden.
 
 ### Ways to connect
 
@@ -365,9 +367,10 @@ OK, then a hold or Back, then any note, so on a tab it always starts with
 `< > tabs`.
 
 The screenshots are drawn on a computer by the firmware's own page code,
-so they match what the current firmware draws. Each is fed the values a
-photo of the meter showed in real use, except Calibration, which shows
-example values. To draw them again:
+so they match what the current firmware draws. Recorded meter values are
+used where available; AFC and Calibration use example values, and System's
+serial number and temperature are illustrative. A screenshot demonstrates
+layout, not hardware validation. To draw them again:
 
 ```sh
 cargo run -p firmware-core --example screens --locked -- pictures
@@ -452,8 +455,9 @@ use in the `PROTOCOL` strip along the bottom. The meter starts on it.
 This is the **Lines** screen (tab `LINES` in Monitor): the voltages on the
 USB data and configuration lines, read by the MCU's own ADC against its
 internal reference, independently of the bus sensor and the PD controller.
-The lines are sampled only while this screen, the overview or a Quick Charge
-screen shows, or while Quick Charge runs.
+The lines are sampled while Lines, Overview, Ripple, System or a Quick Charge,
+SCP, FCP or AFC page shows, or while a legacy-protocol request runs. Only
+System scans include the meter-temperature input.
 
 - **`D+`** / **`D-`**: the USB 2.0 data lines, in volts. Chargers that
   identify themselves on these lines (BC 1.2, Apple and similar dividers) show
@@ -1261,8 +1265,9 @@ energy persistence, timer mode and calibration. All settings fit on one screen.
   values. Saved.
 - A failed settings save shows a storage-full or write-failure warning.
 - **Hint row**: `< > choose  OK change  BACK exit`, then
-  `< > dimmer/brighter  OK done`, `< > auto/normal/flipped  OK done` or
-  `< > interval  OK done (shorter wears)`; on `CALIBRATION`,
+  `< > dimmer/brighter  OK done`, `< > auto/normal/flipped  OK done`,
+  `< > interval  OK done (shorter wears)` or `< > elapsed/active  OK done`;
+  on `CALIBRATION`,
   `OK calibrate  hold OK factory reset`.
 
 ##### Calibration
@@ -1670,9 +1675,12 @@ Sink (slider at sink, then power up from a PD charger through a cable):
    Compare the values with a multimeter where the lines are reachable.
    Right: Energy counts up under load. Right: Graph plots the last minutes;
    OK and Left/Right switch the trace and window.
-4. Settings (Back on the overview): change brightness and rotation, then
-   unplug and plug in again. Both are kept. With energy memory on, the
-   Energy totals and time come back too.
+4. Settings (Back on the overview): all five settings fit without scrolling.
+   `TIMER: ELAPSED` counts even without a load; `ACTIVE` pauses without a
+   load and advances with a steady load above 0.2 W. Switching modes keeps
+   the accumulated time. Change brightness, rotation and timer mode, then
+   unplug and plug in again: all three are kept. With energy memory on,
+   wait for a checkpoint before unplugging; the saved totals and time return.
 5. PD Profiles page (Trigger group, OK to reach its tabs): step through the
    profiles, confirm one, check the overview voltage, then go back to 5 V.
 6. PPS page (PPS charger): step voltage and current, confirm, check the
@@ -1688,8 +1696,13 @@ Sink (slider at sink, then power up from a PD charger through a cable):
    charger, the profile and AVS pages leave EPR out.
 8. Cable page with an e-marked cable, from 9 V or higher: hold OK drops to 5 V
    and it shows the marker's details.
-9. System page: `LAST RESET:` reads `POWER` after a plain plug-in, and the I2C
-   fault counters stay at zero.
+9. System page: serial number, firmware version and meter temperature appear
+   first. Scroll to check that `LAST RESET:` reads `POWER` after a plain
+   plug-in and the I2C fault counters stay at zero. The experimental
+   temperature needs comparison with an independent temperature reference
+   and must rise as the meter warms; a plausible number alone does not
+   establish sensor validity. Compare line/ripple readings and Quick Charge
+   operation before and after visiting System.
 10. Unplug and plug the charger back in mid-session: the meter boots and
     negotiates again.
 11. A port without PD (computer USB-A, or Type-C without PD): the PD page
@@ -1711,8 +1724,9 @@ Sink (slider at sink, then power up from a PD charger through a cable):
 
 See [the safety contract](docs/SAFETY.md) before changing PD handling or preparing
 an image. Compilation is not hardware or USB-IF qualification. The firmware runs
-on the meter and its features were checked by hand there, but there is no
-systematic hardware regression suite. Packaging must independently
+on the meter and some features have been checked by hand, but there is no
+systematic hardware regression suite. The experimental meter-temperature
+input and accuracy remain unverified. Packaging must independently
 preserve the bootloader and settings regions; passing the offline
 audit and dry-run still does not authorize flashing. Runtime architecture cleanup
 and hardware qualification remain separate from this port.
@@ -1821,12 +1835,14 @@ cargo clippy --locked --workspace --exclude firmware --all-targets -- -D warning
 cargo clippy --locked -p firmware --all-features --target thumbv7em-none-eabihf -- -D warnings
 cargo test --locked -p fusb302-pd --lib
 cargo test --locked -p firmware-core --lib
+cargo test --locked -p firmware-core --test settings_store --test temperature
+cargo test --locked -p firmware-core --example screens system_info_preserves_serial_format
 cargo test --locked -p firmware-pack --test cli
 ```
 
-The libraries set `test = false` so `--all-targets` builds for the embedded
-target never compile host-only tests; run their unit tests on the host with an
-explicit `--lib`, as above.
+Run these test commands on the host, without an embedded `--target`.
+The libraries set `test = false`, so their unit tests need the explicit
+`--lib`; integration and screenshot tests are selected separately above.
 
 The CLI regressions exercise standalone container generation and audit refusal paths
 with synthetic files. They never discover or open a device.
@@ -1885,9 +1901,10 @@ The generated container passed all 26 batch checks and final bootloader
 verification on Linux. The flasher waits for flash programming to settle before
 verification and checks response packet checksums. Final verification has
 failed intermittently (code 4) after every batch was accepted, so the flasher
-then erases and writes the image once more; if that also fails, reconnect in
-bootloader mode and run the same command again. An offline audit is not runtime
-or safety qualification; neither an audit nor a matching hash authorizes flashing.
+then erases and writes the same image once more. If that also fails, stop and
+follow the [flashing error guidance](#what-the-flasher-checks-and-does).
+An offline audit is not runtime or safety qualification; neither an audit nor
+a matching hash authorizes flashing.
 
 ### Firmware builds and release downloads
 
@@ -2037,6 +2054,10 @@ A partial final report is zero-padded for transport without changing the image
 or its checksum. The bootloader and storage above the erase envelope are not
 written by this update sequence.
 
+If final bootloader verification returns code 4, the tool automatically makes
+one more full erase-and-write pass with the same approved image. Other
+transport or protocol errors stop immediately. It never restores another image.
+
 **First boot after flashing:** the backlight comes on for a few seconds with a
 blank screen while the release unpacks itself, then the meter restarts into
 the firmware. Keep it powered until then. If the backlight **blinks**, the
@@ -2045,10 +2066,11 @@ flash the release again. If power is lost while it unpacks, it either resumes
 on the next power-up or stays dark; for a dark screen, flash the release
 again the same way. The bootloader itself is never written.
 
-**On a write or verification error, stop and leave the device in bootloader
-mode.** The tool does not automatically reboot, retry or restore another image.
+**If the command exits with a write or verification error, stop and leave the
+device in bootloader mode.** The tool does not reboot after a failed update.
 Successful batch checksums alone are not a successful update. Investigation,
-retry or restoration needs separate approval of the exact image/hash.
+a new flashing attempt or restoration needs separate approval of the exact
+image/hash.
 
 Linux flashing has passed final verification for both the generated project
 image and stock firmware; stock boot was confirmed. The x64 Windows GNU
@@ -2128,6 +2150,15 @@ The Rust `flasher` accepts original firmware containers with the same hash,
 container and erase-limit checks described above. Use `--dry-run` first; actual
 stock flashing succeeded with the x64 Windows GNU cross-build.
 The vendor's updater is another option.
+
+## Community reviews
+
+Thanks to [@tomoca2](https://github.com/tomoca2) for these hands-on articles
+in Japanese. They cover earlier firmware releases; screenshots and controls
+may differ from the current version.
+
+- [Firmware introduction and feature walkthrough](https://tomoca2.hatenablog.com/entry/2026/10/16/215318) (Japanese).
+- [Sink-port inspection and v0.11.0 hands-on review](https://tomoca2.hatenablog.com/entry/2026/11/01/173945) (Japanese).
 
 ## License
 

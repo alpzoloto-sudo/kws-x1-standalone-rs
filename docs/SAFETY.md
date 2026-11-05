@@ -416,9 +416,12 @@ exact candidate hash, container framing/checksum and erase ceiling before
 discovering hardware, and keeps the validated payload in memory rather than
 rereading the image after approval. It has no hash deny list, accepts stock/custom
 application layouts and zero-pads a partial final HID report. Neither acceptance
-nor padding establishes runtime safety. Bootloader mode is required before erase;
-transport/verification errors stop without retries, restoration or reboot.
-Only successful verification permits the final reboot command.
+nor padding establishes runtime safety. Bootloader mode is required before erase.
+Transport and protocol errors stop without retries. Final bootloader verification
+code 4 permits one additional full erase-and-write pass with the same approved
+image; a second failure stops without restoration or reboot. The tool never
+restores another image. Only successful verification permits the final reboot
+command.
 `--dry-run` never discovers/opens a device, and refuses combination with `--info`.
 
 No flashing, probing or other device I/O is authorized by a build or migration.
