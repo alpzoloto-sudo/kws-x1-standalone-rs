@@ -3319,7 +3319,13 @@ pub fn draw_settings<D: DrawTarget<Color = Rgb565>>(
     serial: Option<u32>,
 ) {
     draw_header(target, header);
-    for (index, item) in Item::ALL.into_iter().enumerate() {
+    // Four rows fit above the serial number; scroll when the last is selected.
+    let first = Item::ALL
+        .iter()
+        .position(|item| *item == focus.row())
+        .unwrap_or(0)
+        .saturating_sub(3);
+    for (index, item) in Item::ALL.into_iter().skip(first).take(4).enumerate() {
         let baseline = SETTINGS_BASELINE + index as i32 * SETTINGS_PITCH;
         let selected = item == focus.row();
         if selected && item == Item::Calibration {
@@ -3361,6 +3367,7 @@ pub fn draw_settings<D: DrawTarget<Color = Rgb565>>(
             Item::Brightness => "BRIGHTNESS",
             Item::Rotation => "ROTATION",
             Item::EnergyMemory => "ENERGY MEMORY",
+            Item::TimerMode => "TIMER",
             Item::Calibration => "CALIBRATION",
         };
         text(
@@ -3405,6 +3412,19 @@ pub fn draw_settings<D: DrawTarget<Color = Rgb565>>(
                     target,
                     &ROW,
                     settings.energy_memory.label(),
+                    Point::new(193, baseline),
+                    HorizontalAlignment::Center,
+                    if selected { YELLOW } else { MUTED },
+                );
+            }
+            Item::TimerMode => {
+                if focus == SettingsFocus::TimerMode {
+                    value_frame(target, 154, baseline);
+                }
+                text(
+                    target,
+                    &ROW,
+                    settings.timer_mode.label(),
                     Point::new(193, baseline),
                     HorizontalAlignment::Center,
                     if selected { YELLOW } else { MUTED },
@@ -3475,6 +3495,7 @@ pub fn draw_settings<D: DrawTarget<Color = Rgb565>>(
             SettingsFocus::Brightness => "< > dimmer/brighter  OK done",
             SettingsFocus::Rotation => "< > auto/normal/flipped  OK done",
             SettingsFocus::EnergyMemory => "< > interval  OK done (shorter wears)",
+            SettingsFocus::TimerMode => "< > elapsed/active  OK done",
             SettingsFocus::Row(Item::Calibration) => "OK calibrate  hold OK factory reset",
             _ => "< > choose  OK change  BACK exit",
         },

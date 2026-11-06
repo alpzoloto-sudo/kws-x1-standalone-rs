@@ -687,6 +687,7 @@ pub enum SettingsFocus {
     Brightness,
     Rotation,
     EnergyMemory,
+    TimerMode,
     /// The calibration steps run; Back cancels them.
     Calibrate(Wizard),
 }
@@ -705,6 +706,7 @@ impl SettingsFocus {
             Self::Brightness => Item::Brightness,
             Self::Rotation => Item::Rotation,
             Self::EnergyMemory => Item::EnergyMemory,
+            Self::TimerMode => Item::TimerMode,
             Self::Calibrate(_) => Item::Calibration,
         }
     }
@@ -890,6 +892,7 @@ impl Page {
                 SettingsFocus::Brightness
                     | SettingsFocus::Rotation
                     | SettingsFocus::EnergyMemory
+                    | SettingsFocus::TimerMode
                     | SettingsFocus::Calibrate(_)
             )
         )
@@ -1595,6 +1598,7 @@ impl Navigation {
             Page::Settings(SettingsFocus::EnergyMemory) => {
                 input.settings.step_energy_memory(forward)
             }
+            Page::Settings(SettingsFocus::TimerMode) => input.settings.toggle_timer_mode(),
             Page::Settings(SettingsFocus::Calibrate(wizard)) => wizard.step(forward, repeat),
             Page::Open(Open::Fixed) => return Some(PdCommand::StepFixed(sign as i8)),
             Page::Open(Open::Qc2(preview)) => {
@@ -1853,6 +1857,7 @@ impl Navigation {
                     Item::Brightness => SettingsFocus::Brightness,
                     Item::Rotation => SettingsFocus::Rotation,
                     Item::EnergyMemory => SettingsFocus::EnergyMemory,
+                    Item::TimerMode => SettingsFocus::TimerMode,
                     Item::Calibration => {
                         SettingsFocus::Calibrate(Wizard::new(input.settings.calibration))
                     }

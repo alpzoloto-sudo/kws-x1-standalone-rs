@@ -277,7 +277,7 @@ point the way it flows (they follow the screen rotation).
 | **Charger** | the offer (`*` = needs a 5 A cable), the charger's identity, maker and peak ratings, power status and source info, the battery of a power bank or a phone powering the meter, QC, SCP, FCP and AFC results | OK to scroll; hold OK: full scan (Quick Charge, SCP, FCP and AFC identification, PD, EPR, and the 5 A cable test with the plug in the charger) |
 | **Cable** | the cable's e-marker: a readable summary (type, speed, rating, length, alt modes, maker), identity, ratings, status and modes | OK to scroll; hold OK to read the e-marker (drops to fixed 5 V first) |
 | **System** | I2C bus state and counters, frame and button timing, stack use, `LAST RESET:` cause | OK to scroll |
-| **Settings** | `BRIGHTNESS` (5 levels, 60% at first), `ROTATION` (`AUTO` follows the tilt sensor, `NORMAL`, `FLIPPED`), `ENERGY MEMORY`, `CALIBRATION`, `SERIAL` and `VERSION` (shown only) | Left/Right row, OK change it, Left/Right value, OK or Back done |
+| **Settings** | `BRIGHTNESS` (5 levels, 60% at first), `ROTATION` (`AUTO` follows the tilt sensor, `NORMAL`, `FLIPPED`), `ENERGY MEMORY`, `TIMER`, `CALIBRATION`, `SERIAL` and `VERSION` (shown only) | Left/Right row, OK change it, Left/Right value, OK or Back done |
 
 The selector pages only show the offer until a sink session has one. A
 profile is requested only after the final OK; Left/Right alone just preview.
@@ -289,8 +289,9 @@ unknown state. A port without PD does not close it.
 
 ### What is saved
 
-Brightness, rotation, the energy-memory interval and the calibration are saved to flash once you finish changing them, and
-come back at the next power-up, as does the mode the meter restarts the
+Brightness, rotation, the energy-memory interval, timer mode and calibration
+are saved to flash once you finish changing them, and come back at the next
+power-up, as does the mode the meter restarts the
 charger into (full scan, cable test, Quick Charge). The chosen profile is not:
 every boot starts at 5 V. `MAX` values live until reset or power-off.
 
@@ -304,9 +305,9 @@ area fills, settings keep working until power-off but are no longer saved.
 
 **Energy memory** defaults to **Off**: Ah/Wh and the time reset at every restart and no totals
 are written. Choose **5s, 10s, 30s or 60s** to restore the latest checkpoint and
-continue counting across restarts. The time counts on while the meter runs, so
-every interval writes a checkpoint. Changing an enabled interval or enabling
-memory also checkpoints current totals; resetting on the Energy screen clears
+continue counting across restarts. Checkpoints are attempted at every interval.
+Changing an enabled interval or enabling memory also checkpoints current totals;
+resetting on the Energy screen clears
 the counters and the time and checkpoints the reset when memory is enabled.
 Checkpoints from earlier builds, which kept no time, are carried over once at
 boot with the time at zero.
@@ -474,9 +475,13 @@ The **Energy** screen (tab `ENERGY` in Monitor, after Lines) shows, in three
 outlined cards, **CHARGE** in Ah and **ENERGY** in Wh, with three decimals, and
 **TIME** since the last reset (`h:mm:ss`). It counts current magnitude in either direction, sampling
 voltage/current every nominal 100 ms regardless of the shown page. Failed
-samples and gaps over one second are not extrapolated; the time counts on
-through them. Counters and time continue from saved totals only when energy
-memory is enabled.
+samples and gaps over one second are not extrapolated. By default, time counts
+while the meter runs, including through missing readings. The Settings `TIMER`
+option can instead count only active time: intervals with readings at both ends
+above 0.2 W in either direction, matching the stock firmware's power threshold.
+Missing readings and gaps over one second do not count in active mode. Counters
+and time continue from saved totals only when energy memory is enabled; changing
+timer mode does not reset the accumulated time.
 
 The hint row ends with how the totals are kept: `RAM only`, `save 5s` (the
 checkpoint interval), `flash taken` or `save failed`, for example
@@ -1224,7 +1229,7 @@ It scrolls (OK) through three sections.
 <img src="pictures/settings_screen.webp" width="480" alt="Settings screen">
 
 This is the **Settings** screen (Back on the overview): display preferences,
-energy persistence and calibration.
+energy persistence, timer mode and calibration. The rows scroll as you select them.
 
 - **`BRIGHTNESS`**: five bars, 20%, 40%, 60%, 80% and 95%. Saved; the backlight
   starts at the restored level, not always the default 60%.
@@ -1234,6 +1239,9 @@ energy persistence and calibration.
   over, the two arrow buttons swap.
 - **`ENERGY MEMORY`**: `OFF` (default), `5s`, `10s`, `30s` or `60s`. Saved.
   Shorter intervals lose less usage on power loss but cause more flash wear.
+- **`TIMER`**: `ELAPSED` (default) counts powered-on time; `ACTIVE` counts
+  intervals with power above 0.2 W in either direction. Saved. Switching modes
+  preserves the accumulated time, including any previously saved time.
 - **`CALIBRATION`**: `FACTORY` or `CUSTOM`. OK starts the calibration steps
   below; holding OK sweeps the row and, once full, restores the factory
   values. Saved.

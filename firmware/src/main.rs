@@ -1221,7 +1221,11 @@ async fn meter_task(
             }
             METER_MEAN.sender().send(average.mean());
             let read_ms = Instant::now().as_millis();
-            energy.sample(read_ms, sample.map(|reading| (reading.mv, reading.ma)));
+            energy.sample(
+                read_ms,
+                sample.map(|reading| (reading.mv, reading.ma)),
+                input.settings.timer_mode,
+            );
             power_history.sample(
                 read_ms,
                 sample.map(|reading| power_history::Sample {

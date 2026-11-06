@@ -55,6 +55,49 @@ impl EnergyMemory {
     }
 }
 
+/// What the session timer counts: every second since it started, or only
+/// the seconds with a load, pausing while nothing draws current.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TimerMode {
+    #[default]
+    Elapsed,
+    Active,
+}
+
+/// Timer mode record: tag in the top byte and the mode in bit 16. The
+/// settings word has no free bits, so this is a record of its own beside it.
+const TIMER_RECORD_TAG: u32 = 0x74;
+const TIMER_KIND_SHIFT: u32 = 16;
+/// Every bit but the tag and the mode, which a record keeps zero.
+const TIMER_UNUSED_MASK: u32 = !(0xff << 24 | 1 << TIMER_KIND_SHIFT);
+
+impl TimerMode {
+    pub const ALL: [Self; 2] = [Self::Elapsed, Self::Active];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Elapsed => "ELAPSED",
+            Self::Active => "ACTIVE",
+        }
+    }
+
+    /// The flash record keeping `mode`.
+    pub fn record(mode: Self) -> u32 {
+        TIMER_RECORD_TAG << 24 | (mode as u32) << TIMER_KIND_SHIFT
+    }
+
+    /// Unpack [`Self::record`]: `None` unless `word` is one.
+    pub fn read(word: u32) -> Option<Self> {
+        if word >> 24 != TIMER_RECORD_TAG || word & TIMER_UNUSED_MASK != 0 {
+            return None;
+        }
+        Some(match word >> TIMER_KIND_SHIFT & 1 {
+            0 => Self::Elapsed,
+            _ => Self::Active,
+        })
+    }
+}
+
 /// Screen orientation: follow the tilt sensor, or stay fixed.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Rotation {
@@ -400,6 +443,9 @@ pub struct Settings {
     pub brightness: u8,
     pub rotation: Rotation,
     pub energy_memory: EnergyMemory,
+    /// What the timer counts; kept in a record of its own
+    /// ([`TimerMode::record`]), which [`Self::encode`] leaves out.
+    pub timer_mode: TimerMode,
     pub next_boot: NextBoot,
     /// The full scan's Quick Charge result, for its PD part to show; that
     /// boot clears it.
@@ -426,6 +472,7 @@ impl Default for Settings {
             brightness: DEFAULT_BRIGHTNESS,
             rotation: Rotation::Auto,
             energy_memory: EnergyMemory::Off,
+            timer_mode: TimerMode::Elapsed,
             next_boot: NextBoot::Normal,
             qc_findings: None,
             scp_findings: None,
@@ -500,6 +547,14 @@ impl Settings {
         self.energy_memory = all[next % all.len()];
     }
 
+    /// The other timer mode.
+    pub fn toggle_timer_mode(&mut self) {
+        self.timer_mode = match self.timer_mode {
+            TimerMode::Elapsed => TimerMode::Active,
+            TimerMode::Active => TimerMode::Elapsed,
+        };
+    }
+
     pub fn brightness_percent(&self) -> u8 {
         BRIGHTNESS_PERCENT[usize::from(self.brightness) % BRIGHTNESS_PERCENT.len()]
     }
@@ -550,6 +605,7 @@ impl Settings {
             brightness,
             rotation,
             energy_memory,
+            timer_mode: TimerMode::default(),
             next_boot,
             qc_findings,
             scp_findings,
@@ -568,14 +624,16 @@ pub enum Item {
     Brightness,
     Rotation,
     EnergyMemory,
+    TimerMode,
     Calibration,
 }
 
 impl Item {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::Brightness,
         Self::Rotation,
         Self::EnergyMemory,
+        Self::TimerMode,
         Self::Calibration,
     ];
 }
@@ -593,6 +651,7 @@ mod tests {
                     brightness,
                     rotation: Rotation::Flipped,
                     energy_memory: memory,
+                    timer_mode: TimerMode::Elapsed,
                     next_boot: NextBoot::ScanQuickCharge {
                         then_cable_test: true,
                     },
@@ -670,6 +729,28 @@ mod tests {
         for word in [Settings::default().encode(), fcp, 0, u32::MAX, 0xaf04_0000] {
             assert_eq!(AfcFindings::read(word), None);
         }
+    }
+
+    // The timer mode has no bit in the settings word: its own record must
+    // read back exactly, and records without one keep the default.
+    #[test]
+    fn timer_mode_record_round_trips_and_legacy_records_keep_elapsed() {
+        for mode in TimerMode::ALL {
+            assert_eq!(TimerMode::read(TimerMode::record(mode)), Some(mode));
+            assert_eq!(Settings::decode(TimerMode::record(mode)), None);
+        }
+        assert_eq!(TimerMode::read(Settings::default().encode()), None);
+        assert_eq!(TimerMode::read(0x7402_0000), None);
+        assert_eq!(TimerMode::read(0xfc00_0000), None);
+        assert_eq!(
+            Settings::decode(0x5e00_0002).map(|settings| settings.timer_mode),
+            Some(TimerMode::Elapsed)
+        );
+        let mut settings = Settings::default();
+        settings.toggle_timer_mode();
+        assert_eq!(settings.timer_mode, TimerMode::Active);
+        settings.toggle_timer_mode();
+        assert_eq!(settings.timer_mode, TimerMode::Elapsed);
     }
 
     #[test]

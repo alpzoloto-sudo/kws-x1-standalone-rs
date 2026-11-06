@@ -326,10 +326,11 @@ Energy memory defaults Off, with no totals writes or restoration on boot.
 Enabled intervals are 5, 10, 30 and 60 seconds. Charge/energy integrate fresh
 voltage and current-magnitude samples, independent of navigation. Failed samples
 or gaps over one second break integration; missing usage is not invented.
-Elapsed time since the last reset counts on through them.
-The selected interval checkpoints changed totals, and the elapsed time changes
-every interval; enabling or changing an enabled interval, and resetting totals,
-also checkpoint immediately. Disabling memory
+By default, elapsed time since the last reset counts on through them. In active
+mode, only intervals bounded by two samples above 0.2 W in either direction
+count; missing samples and gaps over one second do not count.
+The selected interval checkpoints changed totals; enabling or changing an enabled
+interval, and resetting totals, also checkpoint immediately. Disabling memory
 preserves the live counters but ignores old checkpoints on the next boot.
 
 Before I2C, panel DMA or protocol tasks start (and only after the upper code

@@ -138,3 +138,47 @@ fn calibration_survives_reopening_and_moving_to_a_new_sector() {
         assert_eq!(Store::open().1, Some(settings));
     }
 }
+
+// The timer mode has no bit in the settings word, so it rides in a record of
+// its own: it must survive reopening and a sector rollover, and a sector an
+// older build claimed, which has no such record, must keep the default.
+#[test]
+fn timer_mode_survives_reopening_and_a_new_sector() {
+    use firmware_core::settings::{Settings, TimerMode};
+    use settings_store::Store;
+
+    // The first word of a sector claimed for settings ("KWST").
+    const CLAIM: u32 = 0x4b57_5354;
+    let _turn = flash_turn();
+    flash::reset(flash::BLANK, usize::MAX);
+    let (mut store, _) = Store::open();
+    let mut settings = Settings {
+        timer_mode: TimerMode::Active,
+        ..Settings::default()
+    };
+    assert!(store.save(settings));
+    assert_eq!(Store::open().1, Some(settings));
+    // Only the settings word changes from here, enough saves to fill the
+    // first sector: the next one must start with the timer record.
+    for change in 0..flash::SECTOR / 8 {
+        settings.brightness = (change % 2) as u8;
+        assert!(store.save(settings));
+    }
+    assert_eq!(Store::open().1, Some(settings));
+    // The saves above filled the first sector and claimed a second one.
+    assert_eq!(
+        flash::SECTORS
+            .iter()
+            .filter(|&&base| flash::read(base) == CLAIM)
+            .count(),
+        2
+    );
+
+    // An older build's sector: the claim word and a settings word with no
+    // timer record beside it.
+    flash::reset(flash::BLANK, usize::MAX);
+    assert!(flash::write(0, 0, &[CLAIM]));
+    let word = Settings::default().encode();
+    assert!(flash::write(0, 8, &[word, !word]));
+    assert_eq!(Store::open().1, Some(Settings::default()));
+}
