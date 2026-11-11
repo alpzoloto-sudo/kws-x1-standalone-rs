@@ -45,6 +45,7 @@ mod firmware {
     pub mod protocol;
     pub mod render;
     pub mod ui;
+    pub mod ukrainian;
 }
 use firmware::pd::{Observation, Phase, SniffObservation, SprObservation};
 use firmware::protocol::{Sources, identify};
