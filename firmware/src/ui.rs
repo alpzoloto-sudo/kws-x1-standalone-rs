@@ -491,6 +491,16 @@ fn text<D: DrawTarget<Color = Rgb565>>(
     horizontal: HorizontalAlignment,
     color: Rgb565,
 ) -> i32 {
+    // Draw translated labels using a compact Cyrillic bitmap. All other
+    // technical readouts retain the original font and layout.
+    if let Some(uk) = super::ukrainian::translate(content) {
+        let alignment = match horizontal {
+            HorizontalAlignment::Left => 0,
+            HorizontalAlignment::Center => 1,
+            HorizontalAlignment::Right => 2,
+        };
+        return super::ukrainian::draw(target, uk, position.x, position.y, alignment, color);
+    }
     // Glyph lookups cannot fail (unknown characters are skipped) and drawing
     // into the frame is infallible.
     font.render_aligned(

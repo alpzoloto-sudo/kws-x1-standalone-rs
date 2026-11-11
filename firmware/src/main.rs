@@ -37,6 +37,7 @@ mod ripple;
 mod settings_store;
 mod storage_diag;
 mod ui;
+mod ukrainian;
 mod upper;
 
 use core::ptr::addr_of_mut;
