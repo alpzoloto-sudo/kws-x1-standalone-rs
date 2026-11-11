@@ -130,9 +130,49 @@ mod tests {
     use super::*;
     #[test]
     fn every_localized_label_has_glyphs() {
-        let labels = ["SETTINGS", "VOLTAGE", "CURRENT", "POWER", "MAX", "PROTOCOL",
-            "BRIGHTNESS", "ROTATION", "ENERGY MEMORY", "TIMER", "CALIBRATION",
-            "AUTO", "NORMAL", "FLIPPED"];
+        let labels = [
+            "SETTINGS",
+            "OVERVIEW",
+            "GRAPH",
+            "RIPPLE",
+            "LINES",
+            "ENERGY",
+            "CHARGER",
+            "CABLE",
+            "SYSTEM",
+            "TIME",
+            "CHARGE",
+            "NOW",
+            "NOW/MAX",
+            "WAIT",
+            "ACTIVE",
+            "FAILED",
+            "BACK",
+            "OUTPUT",
+            "MODE",
+            "STEPS",
+            "DETECTED",
+            "SUPPORTED",
+            "NOT SUPPORTED",
+            "NOT APPLIED",
+            "MAX VOLTAGE",
+            "MAX CURRENT",
+            "SET VOLTAGE",
+            "CURRENT LIMIT",
+            "VOLTAGE",
+            "CURRENT",
+            "POWER",
+            "MAX",
+            "PROTOCOL",
+            "BRIGHTNESS",
+            "ROTATION",
+            "ENERGY MEMORY",
+            "TIMER",
+            "CALIBRATION",
+            "AUTO",
+            "NORMAL",
+            "FLIPPED",
+        ];
         for label in labels {
             for ch in translate(label).unwrap().chars() {
                 assert!(glyph(ch).is_some(), "Missing {ch} in {label}");
