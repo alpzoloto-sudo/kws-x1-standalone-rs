@@ -2,7 +2,7 @@ name: firmware
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/ukrainian-ui]
     tags: ['firmware-v[0-9]+.*']
   pull_request:
   workflow_dispatch:
@@ -34,6 +34,10 @@ jobs:
           cargo clippy -p firmware --all-features --target thumbv7em-none-eabihf --locked -- -D warnings
           cargo clippy --workspace --exclude firmware --all-targets --locked -- -D warnings
           cargo test -p firmware-pack --test cli --locked
+      - name: Render screenshots with Ukrainian labels
+        run: |
+          mkdir -p dist/screens
+          cargo run -p firmware-core --example screens --locked -- dist/screens
       - name: Build normal release firmware without diagnostic features
         run: cargo build --release -p firmware --target thumbv7em-none-eabihf --locked
       - name: Prepare and audit flashable firmware
