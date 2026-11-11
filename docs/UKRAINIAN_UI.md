@@ -23,3 +23,7 @@ cargo run -p firmware-core --example screens --locked -- ./ukrainian-preview
 ```
 
 The image generator includes the **same firmware UI source** used for the device.
+
+## CI verification
+
+The firmware workflow runs on pushes to `feature/ukrainian-ui` and on pull requests. The resulting artifacts should include the firmware image and rendered screenshots only after successful validation.
