@@ -1,0 +1,115 @@
+//! Compact 5x7 Ukrainian uppercase glyphs for the 240x135 meter display.
+//! Kept separate from the manufacturer's fonts to avoid missing Cyrillic glyphs.
+//! This is an initial localization: unlisted technical labels stay in English.
+use embedded_graphics::pixelcolor::Rgb565;
+use embedded_graphics::prelude::*;
+
+/// Translate stable, user-facing labels without modifying protocol strings.
+pub fn translate(source: &str) -> Option<&'static str> {
+    Some(match source {
+        "SETTINGS" => "НАЛАШТУВАННЯ",
+        "VOLTAGE" => "НАПРУГА",
+        "CURRENT" => "СТРУМ",
+        "POWER" => "ПОТУЖНІСТЬ",
+        "MAX" => "МАКС",
+        "PROTOCOL" => "ПРОТОКОЛ",
+        "BRIGHTNESS" => "ЯСКРАВІСТЬ",
+        "ROTATION" => "ОБЕРТАННЯ",
+        "ENERGY MEMORY" => "ПАМ'ЯТЬ",
+        "TIMER" => "ТАЙМЕР",
+        "CALIBRATION" => "КАЛІБРУВАННЯ",
+        "AUTO" => "АВТО",
+        "NORMAL" => "ЗВИЧАЙНО",
+        "FLIPPED" => "ПОВЕРНУТО",
+        _ => return None,
+    })
+}
+
+fn glyph(ch: char) -> Option<[u8; 7]> {
+    match ch {
+        'А' => Some([0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001]),
+        'Б' => Some([0b11111, 0b10000, 0b10000, 0b11110, 0b10001, 0b10001, 0b11110]),
+        'В' => Some([0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110]),
+        'Г' => Some([0b11111, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000]),
+        'Ґ' => Some([0b00001, 0b11111, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000]),
+        'Д' => Some([0b00110, 0b01010, 0b01010, 0b01010, 0b01010, 0b11111, 0b10001]),
+        'Е' => Some([0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111]),
+        'Є' => Some([0b01111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b01111]),
+        'Ж' => Some([0b10101, 0b10101, 0b10101, 0b01110, 0b10101, 0b10101, 0b10101]),
+        'З' => Some([0b11110, 0b00001, 0b00001, 0b01110, 0b00001, 0b00001, 0b11110]),
+        'И' => Some([0b10001, 0b10011, 0b10101, 0b10101, 0b11001, 0b10001, 0b10001]),
+        'І' => Some([0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b11111]),
+        'Ї' => Some([0b01010, 0b00000, 0b11111, 0b00100, 0b00100, 0b00100, 0b11111]),
+        'Й' => Some([0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b10001]),
+        'К' => Some([0b10001, 0b10010, 0b10100, 0b11000, 0b10100, 0b10010, 0b10001]),
+        'Л' => Some([0b00111, 0b01001, 0b01001, 0b01001, 0b01001, 0b10001, 0b10001]),
+        'М' => Some([0b10001, 0b11011, 0b10101, 0b10101, 0b10001, 0b10001, 0b10001]),
+        'Н' => Some([0b10001, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001]),
+        'О' => Some([0b01110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110]),
+        'П' => Some([0b11111, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001]),
+        'Р' => Some([0b11110, 0b10001, 0b10001, 0b11110, 0b10000, 0b10000, 0b10000]),
+        'С' => Some([0b01111, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b01111]),
+        'Т' => Some([0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100]),
+        'У' => Some([0b10001, 0b10001, 0b10001, 0b01111, 0b00001, 0b10001, 0b01110]),
+        'Ф' => Some([0b00100, 0b01110, 0b10101, 0b10101, 0b01110, 0b00100, 0b00100]),
+        'Х' => Some([0b10001, 0b10001, 0b01010, 0b00100, 0b01010, 0b10001, 0b10001]),
+        'Ц' => Some([0b10010, 0b10010, 0b10010, 0b10010, 0b10010, 0b11111, 0b00001]),
+        'Ч' => Some([0b10001, 0b10001, 0b10001, 0b01111, 0b00001, 0b00001, 0b00001]),
+        'Ш' => Some([0b10101, 0b10101, 0b10101, 0b10101, 0b10101, 0b10101, 0b11111]),
+        'Щ' => Some([0b10101, 0b10101, 0b10101, 0b10101, 0b10101, 0b11111, 0b00001]),
+        'Ь' => Some([0b10000, 0b10000, 0b10000, 0b11110, 0b10001, 0b10001, 0b11110]),
+        'Ю' => Some([0b10010, 0b10101, 0b10101, 0b11101, 0b10101, 0b10101, 0b10010]),
+        'Я' => Some([0b01111, 0b10001, 0b10001, 0b01111, 0b00101, 0b01001, 0b10001]),
+        ' ' => Some([0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000]),
+        ''' => Some([0b00100, 0b00100, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000]),
+        _ => None,
+    }
+}
+
+/// Draw a translated label with clipping handled by DrawTarget.
+/// Each character occupies six pixels horizontally; height is seven pixels.
+/// The baseline convention matches the existing UI text helper.
+pub fn draw<D: DrawTarget<Color = Rgb565>>(
+    target: &mut D,
+    message: &str,
+    x: i32,
+    baseline: i32,
+    alignment: u8, // 0 left, 1 center, 2 right
+    ink: Rgb565,
+) -> i32 {
+    let width = message.chars().count() as i32 * 6;
+    let start = match alignment {
+        1 => x - width / 2,
+        2 => x - width,
+        _ => x,
+    };
+    for (index, ch) in message.chars().enumerate() {
+        if let Some(rows) = glyph(ch) {
+            for (row, bits) in rows.iter().enumerate() {
+                for column in 0..5 {
+                    if bits & (1 << (4 - column)) != 0 {
+                        let point = Point::new(start + index as i32 * 6 + column, baseline - 7 + row as i32);
+                        let _ = target.draw_iter(core::iter::once(Pixel(point, ink)));
+                    }
+                }
+            }
+        }
+    }
+    start + width
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn every_localized_label_has_glyphs() {
+        let labels = ["SETTINGS", "VOLTAGE", "CURRENT", "POWER", "MAX", "PROTOCOL",
+            "BRIGHTNESS", "ROTATION", "ENERGY MEMORY", "TIMER", "CALIBRATION",
+            "AUTO", "NORMAL", "FLIPPED"];
+        for label in labels {
+            for ch in translate(label).unwrap().chars() {
+                assert!(glyph(ch).is_some(), "Missing {ch} in {label}");
+            }
+        }
+    }
+}
