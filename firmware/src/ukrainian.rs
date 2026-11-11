@@ -115,7 +115,10 @@ pub fn draw<D: DrawTarget<Color = Rgb565>>(
             for (row, bits) in rows.iter().enumerate() {
                 for column in 0..5 {
                     if bits & (1 << (4 - column)) != 0 {
-                        let point = Point::new(start + index as i32 * 6 + column, baseline - 7 + row as i32);
+                        let point = Point::new(
+                            start + index as i32 * 6 + column,
+                            baseline - 7 + row as i32,
+                        );
                         let _ = target.draw_iter(core::iter::once(Pixel(point, ink)));
                     }
                 }
